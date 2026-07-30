@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +20,7 @@ jobs:
 
       - name: Build app (unsigned)
         run: |
-          ls -la && pwd && xcodebuild -project LOLMViewDistance.xcodeproj \
+          xcodebuild -project LOLMViewDistance.xcodeproj \
             -scheme LOLMViewDistance \
             -configuration Release \
             -derivedDataPath /tmp/build \
