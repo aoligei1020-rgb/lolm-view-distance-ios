@@ -20,7 +20,7 @@ jobs:
 
       - name: Build app (unsigned)
         run: |
-          xcodebuild -project LOLMViewDistance.xcodeproj \
+          ls -la && pwd && xcodebuild -project LOLMViewDistance.xcodeproj \
             -scheme LOLMViewDistance \
             -configuration Release \
             -derivedDataPath /tmp/build \
