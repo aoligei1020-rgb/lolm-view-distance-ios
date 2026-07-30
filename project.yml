@@ -1,0 +1,21 @@
+name: LOLMViewDistance
+options:
+  bundleIdPrefix: com.lolm
+  deploymentTarget:
+    iOS: "15.0"
+packages:
+  Swifter:
+    url: https://github.com/httpswift/swifter
+    from: 1.5.0
+targets:
+  LOLMViewDistance:
+    type: application
+    platform: iOS
+    sources:
+      - LOLMViewDistance
+    info:
+      path: LOLMViewDistance/Info.plist
+    dependencies:
+      - package: Swifter
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.lolm.viewdistance
