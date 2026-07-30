@@ -1,42 +1,31 @@
-name: Build IPA (TrollStore ready)
+name: Build IPA
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: macos-15
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install XcodeGen & ldid
-        run: brew install xcodegen ldid
+      - name: Install xcodegen
+        run: brew install xcodegen
 
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Build app (unsigned)
+      - name: Build unsigned IPA
         run: |
-          xcodebuild -project LOLMViewDistance.xcodeproj \
-            -scheme LOLMViewDistance \
-            -configuration Release \
-            -derivedDataPath /tmp/build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
-
-      - name: Package IPA
-        run: |
-          mkdir -p /tmp/Payload
-          cp -r /tmp/build/Build/Products/Release-iphoneos/LOLMViewDistance.app /tmp/Payload/
-          ldid -S /tmp/Payload/LOLMViewDistance.app/LOLMViewDistance
-          cd /tmp && zip -r LOLMViewDistance.ipa Payload/
+          xcodebuild -project LOLMViewDistance.xcodeproj -scheme LOLMViewDistance -configuration Release -sdk iphoneos -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build
+          mkdir -p Payload
+          cp -r DerivedData/Build/Products/Release-iphoneos/LOLMViewDistance.app Payload/
+          zip -r LOLMViewDistance.ipa Payload
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: LOLMViewDistance-unsigned
-          path: /tmp/LOLMViewDistance.ipa
+          path: LOLMViewDistance.ipa
