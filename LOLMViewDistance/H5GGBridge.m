@@ -10,7 +10,11 @@
 #import <dlfcn.h>
 #import <sys/sysctl.h>
 #import <mach-o/dyld_images.h>
-#import <Security/Security.h>
+
+// SecTask 是私有 API（iOS SDK 无头文件），手动声明；用 CFTypeRef 避免类型缺失
+// 返回需要 CFRelease；SecTaskCopyValueForEntitlement 返回 CFBooleanRef/CFStringRef 等
+// extern CFTypeRef SecTaskCreateFromSelf(CFAllocatorRef allocator);
+// extern CFTypeRef SecTaskCopyValueForEntitlement(CFTypeRef task, CFStringRef entitlement, CFErrorRef *error);
 
 // libproc 头文件在 iOS SDK 中不可靠（Xcode16/iOS18 SDK 无 libproc.h），
 // 直接声明 libSystem 导出的函数（libproc 已合并入 libSystem）。
@@ -368,7 +372,10 @@ static BOOL lolmNameMatch(NSString *haystack) {
     d[@"csops"] = (csr == 0) ? [NSString stringWithFormat:@"0x%x", csflags]
                              : [NSString stringWithFormat:@"err:%d", csr];
     BOOL entPlatform = NO, entNoSandbox = NO, entGetTaskAllow = NO;
-    SecTaskRef secTask = SecTaskCreateFromSelf(kCFAllocatorDefault);
+    // SecTask 私有 API：手动声明（见文件头）
+    extern CFTypeRef SecTaskCreateFromSelf(CFAllocatorRef allocator);
+    extern CFTypeRef SecTaskCopyValueForEntitlement(CFTypeRef task, CFStringRef entitlement, CFErrorRef *error);
+    CFTypeRef secTask = SecTaskCreateFromSelf(kCFAllocatorDefault);
     if (secTask) {
         CFTypeRef v = SecTaskCopyValueForEntitlement(secTask, CFSTR("platform-application"), NULL);
         if (v) { entPlatform = (CFGetTypeID(v) == CFBooleanGetTypeID()) && CFBooleanGetValue(v); CFRelease(v); }
