@@ -31,6 +31,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// 写内存，type: "F32" / "I64"
 - (BOOL)setValue:(uint64_t)addr value:(double)value type:(NSString *)type;
 
+/// 诊断信息（含 libproc 枚举统计 + LOLM 扫描结果，/diag 路由使用）
+- (NSDictionary *)diag;
+
 @end
 
 NS_ASSUME_NONNULL_END

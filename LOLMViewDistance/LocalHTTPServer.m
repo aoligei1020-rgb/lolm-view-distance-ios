@@ -201,6 +201,16 @@ static void ServerAcceptCallBack(CFSocketRef socket, CFSocketCallBackType type,
             if (jsonErr || !responseData) {
                 responseData = [@"{\"error\":\"uuid failed\"}" dataUsingEncoding:NSUTF8StringEncoding];
             }
+        } else if ([method isEqualToString:@"GET"] && [path isEqualToString:@"/diag"]) {
+            // 诊断 + 自动扫描绑定 LOLM（Safari 访问 http://127.0.0.1:45678/diag）
+            H5GGBridge *bridge = [H5GGBridge shared];
+            NSError *jsonErr = nil;
+            responseData = [NSJSONSerialization dataWithJSONObject:[bridge diag]
+                                                           options:NSJSONWritingPrettyPrinted
+                                                             error:&jsonErr];
+            if (jsonErr || !responseData) {
+                responseData = [@"{\"error\":\"diag failed\"}" dataUsingEncoding:NSUTF8StringEncoding];
+            }
         } else if ([method isEqualToString:@"POST"] && [path isEqualToString:@"/api"]) {
             responseData = [self handleAPI:bodyData];
         } else {
