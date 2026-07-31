@@ -19,6 +19,15 @@ extern int proc_pidpath(int pid, void *buffer, uint32_t buffersize);
 #define PROC_PIDPATHINFO_MAXSIZE 4096
 #endif
 
+// csops：检查/设置代码签名状态（libSystem 导出，iOS SDK 无头文件，手动声明）
+extern int csops(pid_t pid, unsigned int ops, void *useraddr, size_t usersize);
+#ifndef CS_OPS_STATUS
+#define CS_OPS_STATUS 0
+#endif
+#ifndef CS_PLATFORM_BINARY
+#define CS_PLATFORM_BINARY 0x4000000
+#endif
+
 // task_for_pid 函数指针类型（避免依赖私有类型定义）
 typedef kern_return_t (*task_for_pid_fn_t)(task_t, pid_t, task_t *);
 
@@ -28,6 +37,8 @@ typedef kern_return_t (*task_for_pid_fn_t)(task_t, pid_t, task_t *);
 @property (nonatomic, assign) BOOL attached;
 @property (nonatomic, assign) pid_t scanPID;
 @property (nonatomic, strong) NSDate *scanTime;
+@property (nonatomic, assign) int scanCount;   // 本次扫描尝试 attach 的 pid 数
+@property (nonatomic, assign) int scanTaskOK;  // 本次扫描 task_for_pid 成功数
 @end
 
 @implementation H5GGBridge
@@ -66,16 +77,42 @@ static BOOL lolmNameMatch(NSString *haystack) {
 
 - (NSArray<NSDictionary *> *)getProcList:(NSString *)name {
     NSMutableArray *result = [NSMutableArray array];
+    NSString *lower = name ? name.lowercaseString : @"";
 
-    // iOS 上 sysctl KERN_PROC_ALL 会被沙盒过滤（只能看到自己的进程），
-    // 改用 libproc：proc_listallpids 拿全部 pid + proc_pidpath 拿可执行路径。
+    // 通道1：sysctl KERN_PROC_ALL（H5GG 同款；越狱环境沙盒可能放宽，TrollStore 下通常被过滤）
+    {
+        int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
+        size_t size = 0;
+        if (sysctl(mib, 4, NULL, &size, NULL, 0) == 0 && size > 0) {
+            struct kinfo_proc *pl = malloc(size);
+            if (pl) {
+                if (sysctl(mib, 4, pl, &size, NULL, 0) == 0) {
+                    int cnt = (int)(size / sizeof(struct kinfo_proc));
+                    for (int i = 0; i < cnt; i++) {
+                        NSString *procName = [NSString stringWithUTF8String:pl[i].kp_proc.p_comm];
+                        if (procName.length == 0) continue;
+                        BOOL match = NO;
+                        if (lower.length > 0 &&
+                            ([procName.lowercaseString containsString:lower] ||
+                             [lower containsString:procName.lowercaseString])) match = YES;
+                        if (!match) match = lolmNameMatch(procName);
+                        if (match) {
+                            [result addObject:@{ @"pid": @(pl[i].kp_proc.p_pid), @"name": procName }];
+                        }
+                    }
+                }
+                free(pl);
+            }
+        }
+    }
+
+    // 通道2：libproc（完整可执行路径匹配）
     int maxPids = 4096;
     pid_t *pids = malloc(maxPids * sizeof(pid_t));
     if (!pids) return result;
     int count = proc_listallpids(pids, maxPids * sizeof(pid_t));
     if (count <= 0) { free(pids); return result; }
 
-    NSString *lower = name ? name.lowercaseString : @"";
     for (int i = 0; i < count; i++) {
         pid_t pid = pids[i];
         if (pid <= 0) continue;
@@ -100,6 +137,13 @@ static BOOL lolmNameMatch(NSString *haystack) {
         if (!match) match = lolmNameMatch(execName) || lolmNameMatch(appDirName);
         if (!match) continue;
 
+        // 去重（sysctl 通道可能已命中同一 pid）
+        BOOL dup = NO;
+        for (NSDictionary *r in result) {
+            if ([r[@"pid"] intValue] == pid) { dup = YES; break; }
+        }
+        if (dup) continue;
+
         [result addObject:@{
             @"pid": @(pid),
             @"name": execName ?: @""
@@ -107,7 +151,7 @@ static BOOL lolmNameMatch(NSString *haystack) {
     }
     free(pids);
 
-    // 兜底：libproc 枚举不到 LOLM 时，暴力扫描（task_for_pid + UnityFramework/LOLM 特征确认）
+    // 兜底：枚举不到 LOLM 时，暴力扫描（task_for_pid + UnityFramework/LOLM 特征确认）
     BOOL lolmFound = NO;
     for (NSDictionary *p in result) {
         NSString *n = p[@"name"];
@@ -196,11 +240,15 @@ static BOOL lolmNameMatch(NSString *haystack) {
 // 暴力扫描：遍历 pid，task_for_pid + 特征确认，找到 LOLM 并保持 attach
 - (pid_t)scanForLOLM {
     self.scanTime = [NSDate date];
+    self.scanCount = 0;
+    self.scanTaskOK = 0;
     for (pid_t pid = 2; pid < 10000; pid++) {
         if (pid == getpid()) continue;
+        self.scanCount++;
         task_t task = TASK_NULL;
         kern_return_t kr = [self taskForPid:pid outTask:&task];
         if (kr != KERN_SUCCESS || task == TASK_NULL) continue;
+        self.scanTaskOK++;
         NSString *mod = [self lolmModuleForTask:task];
         if (mod.length > 0) {
             // 找到！保持 attach（释放旧 task 端口）
@@ -235,19 +283,59 @@ static BOOL lolmNameMatch(NSString *haystack) {
     d[@"targetPID"] = @(self.targetPID);
     d[@"scanPID"] = @(self.scanPID);
 
+    // csops 自检：确认 TrollStore 的 platform-application 是否生效
+    // （platform binary 才能 task_for_pid 其他 App Store 应用）
+    int csflags = 0;
+    int csr = csops(getpid(), CS_OPS_STATUS, &csflags, sizeof(csflags));
+    d[@"csops"] = (csr == 0) ? [NSString stringWithFormat:@"0x%x", csflags]
+                             : [NSString stringWithFormat:@"err:%d", csr];
+    d[@"isPlatformBinary"] = @((csr == 0) && (csflags & CS_PLATFORM_BINARY));
+
+    // sysctl 枚举统计（对比 libproc，判断沙盒过滤）
+    int sysctlCount = 0;
+    NSMutableArray *sysctlProcs = [NSMutableArray array];
+    {
+        int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
+        size_t size = 0;
+        if (sysctl(mib, 4, NULL, &size, NULL, 0) == 0 && size > 0) {
+            struct kinfo_proc *pl = malloc(size);
+            if (pl) {
+                if (sysctl(mib, 4, pl, &size, NULL, 0) == 0) {
+                    sysctlCount = (int)(size / sizeof(struct kinfo_proc));
+                    for (int i = 0; i < sysctlCount && i < 30; i++) {
+                        NSString *n = [NSString stringWithUTF8String:pl[i].kp_proc.p_comm];
+                        [sysctlProcs addObject:@{ @"pid": @(pl[i].kp_proc.p_pid), @"name": n ?: @"" }];
+                    }
+                }
+                free(pl);
+            }
+        }
+    }
+    d[@"sysctlCount"] = @(sysctlCount);
+    d[@"sysctlProcs"] = sysctlProcs;
+
+    // libproc 枚举统计 + LOLM 候选
     int maxPids = 4096;
     pid_t *pids = malloc(maxPids * sizeof(pid_t));
     int count = proc_listallpids(pids, maxPids * sizeof(pid_t));
     d[@"procListAll"] = @(count);
     NSMutableArray *procs = [NSMutableArray array];
+    NSMutableArray *lolmCands = [NSMutableArray array];
     for (int i = 0; i < count && i < 80; i++) {
         char pathBuf[PROC_PIDPATHINFO_MAXSIZE] = {0};
         int plen = proc_pidpath(pids[i], pathBuf, sizeof(pathBuf));
         NSString *path = (plen > 0) ? [NSString stringWithUTF8String:pathBuf] : @"(path denied)";
         [procs addObject:@{ @"pid": @(pids[i]), @"path": path ?: @"" }];
+        if (lolmNameMatch(path ?: @"")) {
+            [lolmCands addObject:@{ @"pid": @(pids[i]), @"path": path ?: @"" }];
+        }
     }
     free(pids);
     d[@"procs"] = procs;
+    d[@"lolmCandidates"] = lolmCands;
+
+    // 扫描详情（上次扫描缓存）
+    d[@"scanDetail"] = @{ @"scanned": @(self.scanCount), @"taskOK": @(self.scanTaskOK) };
 
     // 未绑定则触发一次扫描（顺手修复）
     if (!self.attached) {
@@ -256,6 +344,7 @@ static BOOL lolmNameMatch(NSString *haystack) {
     } else {
         d[@"scanResult"] = @(self.targetPID);
     }
+    d[@"scanDetail"] = @{ @"scanned": @(self.scanCount), @"taskOK": @(self.scanTaskOK) };
     return d;
 }
 
