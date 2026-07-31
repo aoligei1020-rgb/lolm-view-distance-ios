@@ -21,7 +21,7 @@
 	<array>
 		<string>com.lolm.viewdistance</string>
 	</array>
-	<key>platform-application</key>
+	<key>task_for_pid-allow</key>
 	<true/>
 </dict>
 </plist>
