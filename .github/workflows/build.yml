@@ -28,7 +28,8 @@ jobs:
           # entitlements 并沿用（源码 RootHelper/main.m: dumpEntitlementsFromBinaryAtPath），
           # 所以预签名带 platform-application + no-sandbox → 权限生效（v3.3.8）
           rm -rf "$APP/_CodeSignature"
-          ./ldid -S LOLMViewDistance/entitlements.plist "$APP/LOLMViewDistance"
+          # 注意：-S 后必须紧贴 entitlements 路径（ldid 语法 -S<path>），不能有空格
+          ./ldid -SLOLMViewDistance/entitlements.plist "$APP/LOLMViewDistance"
           echo "=== 预签名 entitlements 验证 ==="
           ./ldid -e "$APP/LOLMViewDistance"
           mkdir -p Payload
