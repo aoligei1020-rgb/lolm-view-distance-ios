@@ -10,7 +10,14 @@
 #import <dlfcn.h>
 #import <sys/sysctl.h>
 #import <mach-o/dyld_images.h>
-#import <libproc.h>
+
+// libproc 头文件在 iOS SDK 中不可靠（Xcode16/iOS18 SDK 无 libproc.h），
+// 直接声明 libSystem 导出的函数（libproc 已合并入 libSystem）。
+extern int proc_listallpids(void *buffer, int buffersize);
+extern int proc_pidpath(int pid, void *buffer, uint32_t buffersize);
+#ifndef PROC_PIDPATHINFO_MAXSIZE
+#define PROC_PIDPATHINFO_MAXSIZE 4096
+#endif
 
 // task_for_pid 函数指针类型（避免依赖私有类型定义）
 typedef kern_return_t (*task_for_pid_fn_t)(task_t, pid_t, task_t *);
