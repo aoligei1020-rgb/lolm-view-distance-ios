@@ -8,13 +8,6 @@
 	<string>TROLLTROLL</string>
 	<key>com.apple.private.security.no-sandbox</key>
 	<true/>
-	<key>com.apple.private.skip-library-validation</key>
-	<true/>
-	<key>com.apple.security.exception.mach-lookup.global-name</key>
-	<array>
-		<string>com.apple.taskgated-helper</string>
-		<string>com.apple.amfid</string>
-	</array>
 	<key>get-task-allow</key>
 	<true/>
 	<key>keychain-access-groups</key>
