@@ -9,6 +9,10 @@
 #import "H5GGBridge.h"
 #import <dlfcn.h>
 #import <sys/sysctl.h>
+#import <mach-o/dyld_images.h>
+
+// task_for_pid 函数指针类型（避免依赖私有类型定义）
+typedef kern_return_t (*task_for_pid_fn_t)(task_t, pid_t, task_t *);
 
 @interface H5GGBridge ()
 @property (nonatomic, assign) pid_t targetPID;
@@ -71,9 +75,9 @@
 
 - (BOOL)setTargetProc:(pid_t)pid {
     if (pid <= 0) return NO;
-    static task_for_pid_t s_task_for_pid = NULL;
+    static task_for_pid_fn_t s_task_for_pid = NULL;
     if (!s_task_for_pid) {
-        s_task_for_pid = (task_for_pid_t)dlsym(RTLD_DEFAULT, "task_for_pid");
+        s_task_for_pid = (task_for_pid_fn_t)dlsym(RTLD_DEFAULT, "task_for_pid");
     }
     if (!s_task_for_pid) return NO;
 
