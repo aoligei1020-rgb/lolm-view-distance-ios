@@ -10,6 +10,7 @@
 #import <dlfcn.h>
 #import <sys/sysctl.h>
 #import <mach-o/dyld_images.h>
+#import <libproc.h>
 
 // task_for_pid 函数指针类型（避免依赖私有类型定义）
 typedef kern_return_t (*task_for_pid_fn_t)(task_t, pid_t, task_t *);
@@ -40,34 +41,62 @@ typedef kern_return_t (*task_for_pid_fn_t)(task_t, pid_t, task_t *);
 
 #pragma mark - 进程查找
 
+// LOLM 进程名别名（安卓脚本写死 'lolm'，iOS 上可执行文件名可能不同）
+static BOOL lolmNameMatch(NSString *haystack) {
+    if (haystack.length == 0) return NO;
+    NSString *lc = haystack.lowercaseString;
+    if ([lc containsString:@"lolm"]) return YES;
+    if ([lc containsString:@"wildrift"]) return YES;
+    if ([lc containsString:@"wild"]) return YES;
+    if ([lc containsString:@"league"]) return YES;
+    if ([lc containsString:@"lolma"]) return YES;
+    if ([lc containsString:@"tencent"]) return YES;
+    if ([lc containsString:@"riot"]) return YES;
+    return NO;
+}
+
 - (NSArray<NSDictionary *> *)getProcList:(NSString *)name {
     NSMutableArray *result = [NSMutableArray array];
-    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
-    size_t size = 0;
-    if (sysctl(mib, 4, NULL, &size, NULL, 0) != 0) return result;
 
-    struct kinfo_proc *procList = malloc(size);
-    if (!procList) return result;
-    if (sysctl(mib, 4, procList, &size, NULL, 0) != 0) {
-        free(procList);
-        return result;
-    }
+    // iOS 上 sysctl KERN_PROC_ALL 会被沙盒过滤（只能看到自己的进程），
+    // 改用 libproc：proc_listallpids 拿全部 pid + proc_pidpath 拿可执行路径。
+    int maxPids = 4096;
+    pid_t *pids = malloc(maxPids * sizeof(pid_t));
+    if (!pids) return result;
+    int count = proc_listallpids(pids, maxPids * sizeof(pid_t));
+    if (count <= 0) { free(pids); return result; }
 
-    int count = (int)(size / sizeof(struct kinfo_proc));
-    NSString *lower = name.lowercaseString;
+    NSString *lower = name ? name.lowercaseString : @"";
     for (int i = 0; i < count; i++) {
-        NSString *procName = [NSString stringWithUTF8String:procList[i].kp_proc.p_comm];
-        if (procName.length == 0) continue;
-        // p_comm 最多 16 字符，lolm 进程名可能是 lolm 或类似
-        if ([procName.lowercaseString containsString:lower] ||
-            [lower containsString:procName.lowercaseString]) {
-            [result addObject:@{
-                @"pid": @(procList[i].kp_proc.p_pid),
-                @"name": procName
-            }];
+        pid_t pid = pids[i];
+        if (pid <= 0) continue;
+
+        // 完整可执行路径（如 /.../LOLM.app/lolm）
+        char pathBuf[PROC_PIDPATHINFO_MAXSIZE] = {0};
+        int plen = proc_pidpath(pid, pathBuf, sizeof(pathBuf));
+        if (plen <= 0) continue;
+        NSString *path = [NSString stringWithUTF8String:pathBuf];
+        if (!path || path.length == 0) continue;
+
+        NSString *execName = path.lastPathComponent;                 // 可执行文件名
+        NSString *appDirName = path.stringByDeletingLastPathComponent.lastPathComponent; // xxx.app
+
+        // 匹配：① 请求名（lolm） ② LOLM 别名
+        BOOL match = NO;
+        if (lower.length > 0) {
+            if ([execName.lowercaseString containsString:lower] ||
+                [lower containsString:execName.lowercaseString]) match = YES;
+            if (!match && [appDirName.lowercaseString containsString:lower]) match = YES;
         }
+        if (!match) match = lolmNameMatch(execName) || lolmNameMatch(appDirName);
+        if (!match) continue;
+
+        [result addObject:@{
+            @"pid": @(pid),
+            @"name": execName ?: @""
+        }];
     }
-    free(procList);
+    free(pids);
     return result;
 }
 
