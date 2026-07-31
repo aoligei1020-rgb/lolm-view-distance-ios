@@ -10,10 +10,10 @@ targets:
     sources:
       - LOLMViewDistance
     dependencies:
-      - framework: CFNetwork.framework
-      - framework: WebKit.framework
-      - framework: UIKit.framework
-      - framework: Foundation.framework
+      - sdk: CFNetwork.framework
+      - sdk: WebKit.framework
+      - sdk: UIKit.framework
+      - sdk: Foundation.framework
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.lolm.viewdistance
       INFOPLIST_FILE: LOLMViewDistance/Info.plist
