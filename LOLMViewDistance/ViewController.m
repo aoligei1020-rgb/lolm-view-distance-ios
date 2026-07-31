@@ -62,6 +62,7 @@
     @"function r(method, params){ var d=call(method, params); return d.error?null:d.result; }\n"
     @"window.h5gg = {\n"
     @"  getProcList: function(name){ return r('getProcList',{name:name}); },\n"
+    @"  getAllProcs: function(){ return r('getAllProcs',{}); },\n"
     @"  setTargetProc: function(pid){ return r('setTargetProc',{pid:pid}); },\n"
     @"  getRangesList: function(module){ return r('getRangesList',{module:module}); },\n"
     @"  getValue: function(addr,type){ return r('getValue',{addr:addr,type:type}); },\n"

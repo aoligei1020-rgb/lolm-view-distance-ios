@@ -76,6 +76,10 @@ static BOOL lolmNameMatch(NSString *haystack) {
 }
 
 - (NSArray<NSDictionary *> *)getProcList:(NSString *)name {
+    // 已绑定：直接返回目标（手动选择/扫描成功后，脚本下一轮才能拿到 LOLM 继续 getRangesList）
+    if (_attached && _targetPID > 0) {
+        return @[@{ @"pid": @(_targetPID), @"name": @"lolm" }];
+    }
     NSMutableArray *result = [NSMutableArray array];
     NSString *lower = name ? name.lowercaseString : @"";
 
@@ -170,7 +174,77 @@ static BOOL lolmNameMatch(NSString *haystack) {
             [result addObject:@{ @"pid": @(spid), @"name": @"lolm" }];
         }
     }
+
+    // 仍找不到：返回占位项，触发 JS 手动选择（H5GG 交互模式：用户从进程列表选 LOLM）
+    if (result.count == 0) {
+        [result addObject:@{ @"pid": @(-1), @"name": @"__MANUAL_SELECT__" }];
+    }
     return result;
+}
+
+// 全进程列表（供 JS 手动选择面板）：sysctl + libproc 合并，LOLM 关键词优先
+- (NSArray<NSDictionary *> *)getAllProcs {
+    NSMutableDictionary *map = [NSMutableDictionary dictionary];
+
+    // sysctl 通道
+    {
+        int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
+        size_t size = 0;
+        if (sysctl(mib, 4, NULL, &size, NULL, 0) == 0 && size > 0) {
+            struct kinfo_proc *pl = malloc(size);
+            if (pl) {
+                if (sysctl(mib, 4, pl, &size, NULL, 0) == 0) {
+                    int cnt = (int)(size / sizeof(struct kinfo_proc));
+                    for (int i = 0; i < cnt; i++) {
+                        pid_t pid = pl[i].kp_proc.p_pid;
+                        if (pid <= 0 || pid == getpid()) continue;
+                        NSString *n = [NSString stringWithUTF8String:pl[i].kp_proc.p_comm];
+                        if (n.length == 0) continue;
+                        map[@(pid)] = n;
+                    }
+                }
+                free(pl);
+            }
+        }
+    }
+
+    // libproc 通道（路径更准，覆盖 sysctl 被过滤的情况）
+    int maxPids = 4096;
+    pid_t *pids = malloc(maxPids * sizeof(pid_t));
+    if (pids) {
+        int count = proc_listallpids(pids, maxPids * sizeof(pid_t));
+        if (count > 0) {
+            for (int i = 0; i < count; i++) {
+                pid_t pid = pids[i];
+                if (pid <= 0 || pid == getpid()) continue;
+                char pathBuf[PROC_PIDPATHINFO_MAXSIZE] = {0};
+                int plen = proc_pidpath(pid, pathBuf, sizeof(pathBuf));
+                if (plen <= 0) continue;
+                NSString *path = [NSString stringWithUTF8String:pathBuf];
+                if (path.length == 0) continue;
+                map[@(pid)] = path.lastPathComponent;
+            }
+        }
+        free(pids);
+    }
+
+    // 组装 + LOLM 关键词优先排序
+    NSMutableArray *procs = [NSMutableArray array];
+    [map enumerateKeysAndObjectsUsingBlock:^(NSNumber *pid, NSString *name, BOOL *stop) {
+        [procs addObject:@{ @"pid": pid, @"name": name ?: @"" }];
+    }];
+    [procs sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        NSString *na = a[@"name"] ?: @"";
+        NSString *nb = b[@"name"] ?: @"";
+        BOOL ka = lolmNameMatch(na);
+        BOOL kb = lolmNameMatch(nb);
+        if (ka != kb) return ka ? NSOrderedAscending : NSOrderedDescending;
+        return [na compare:nb];
+    }];
+    if (procs.count > 300) {
+        procs = [[procs subarrayWithRange:NSMakeRange(0, 300)] mutableCopy];
+    }
+    return procs;
 }
 
 #pragma mark - LOLM 暴力扫描（task_for_pid + 模块特征确认）

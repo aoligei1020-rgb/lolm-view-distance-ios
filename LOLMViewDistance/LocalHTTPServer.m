@@ -257,6 +257,8 @@ static void ServerAcceptCallBack(CFSocketRef socket, CFSocketCallBackType type,
         if ([method isEqualToString:@"getProcList"]) {
             NSString *name = params[@"name"] ?: @"";
             result[@"result"] = [bridge getProcList:name];
+        } else if ([method isEqualToString:@"getAllProcs"]) {
+            result[@"result"] = [bridge getAllProcs];
         } else if ([method isEqualToString:@"setTargetProc"]) {
             pid_t pid = (pid_t)[params[@"pid"] intValue];
             result[@"result"] = @([bridge setTargetProc:pid]);

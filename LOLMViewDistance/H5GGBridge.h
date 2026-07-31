@@ -19,6 +19,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// 通过进程名模糊搜索进程，返回 [{pid, name}]
 - (NSArray<NSDictionary *> *)getProcList:(NSString *)name;
 
+/// 全进程列表 [{pid, name}]（H5GG 交互模式：手动选择目标进程）
+- (NSArray<NSDictionary *> *)getAllProcs;
+
 /// 绑定目标进程 (task_for_pid)
 - (BOOL)setTargetProc:(pid_t)pid;
 
