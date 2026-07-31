@@ -1,16 +1,25 @@
 name: LOLMViewDistance
 options:
-  bundleIdPrefix: com.example
+  bundleIdPrefix: com.lolm
   deploymentTarget:
-    iOS: "15.0"
+    iOS: "14.0"
 targets:
   LOLMViewDistance:
     type: application
     platform: iOS
     sources:
       - LOLMViewDistance
+    dependencies:
+      - framework: CFNetwork.framework
+      - framework: WebKit.framework
+      - framework: UIKit.framework
+      - framework: Foundation.framework
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.example.lolmviewdistance
+      PRODUCT_BUNDLE_IDENTIFIER: com.lolm.viewdistance
       INFOPLIST_FILE: LOLMViewDistance/Info.plist
       CODE_SIGNING_ALLOWED: "NO"
       CODE_SIGN_IDENTITY: ""
+      TARGETED_DEVICE_FAMILY: "1,2"
+      IPHONEOS_DEPLOYMENT_TARGET: "14.0"
+      CLANG_ENABLE_OBJC_ARC: "YES"
+      OTHER_LDFLAGS: ["-lz"]
