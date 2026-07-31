@@ -204,8 +204,7 @@ setTimeout(function(){
             var ok = origSetTP ? origSetTP(p.pid) : (window.h5gg && window.h5gg.setTargetProc(p.pid));
             _closePanel();
             if (ok) _toast('✅ 已绑定 ' + (p.name || '') + '，正在获取视距地址…', '#7CFC8F');
-            else _toast('❌ 绑定失败（task_for_pid 无权限）
-请截图底部诊断条反馈', '#ff7a7a');
+            else _toast('❌ 绑定失败（task_for_pid 无权限）\n请截图底部诊断条反馈', '#ff7a7a');
           } catch(e) { _closePanel(); }
         };
         box.appendChild(it);
