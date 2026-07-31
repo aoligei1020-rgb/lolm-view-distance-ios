@@ -46,14 +46,21 @@
     memset(&addr4, 0, sizeof(addr4));
     addr4.sin_len = sizeof(addr4);
     addr4.sin_family = AF_INET;
-    addr4.sin_port = htons(0); // 随机端口
+    // 固定端口 45678（localStorage/cookie 按 origin 持久化），占用则回退随机端口
+    addr4.sin_port = htons(45678);
     addr4.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
     CFDataRef addr = CFDataCreate(NULL, (const UInt8 *)&addr4, sizeof(addr4));
     if (CFSocketSetAddress(sock, addr) != kCFSocketSuccess) {
+        // 端口被占用，回退随机端口
         CFRelease(addr);
-        CFRelease(sock);
-        return NO;
+        addr4.sin_port = htons(0);
+        addr = CFDataCreate(NULL, (const UInt8 *)&addr4, sizeof(addr4));
+        if (CFSocketSetAddress(sock, addr) != kCFSocketSuccess) {
+            CFRelease(addr);
+            CFRelease(sock);
+            return NO;
+        }
     }
     CFRelease(addr);
 
@@ -81,6 +88,19 @@
         CFRelease(self.socket);
         self.socket = NULL;
     }
+}
+
+#pragma mark - 设备 UUID
+
+- (NSString *)deviceUUID {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *uuid = [defaults stringForKey:@"lolm_device_uuid"];
+    if (!uuid || uuid.length == 0) {
+        uuid = [[NSUUID UUID] UUIDString];
+        [defaults setObject:uuid forKey:@"lolm_device_uuid"];
+        [defaults synchronize];
+    }
+    return uuid;
 }
 
 #pragma mark - C 回调
@@ -173,6 +193,14 @@ static void ServerAcceptCallBack(CFSocketRef socket, CFSocketCallBackType type,
             }
         } else if ([method isEqualToString:@"GET"] && [path isEqualToString:@"/health"]) {
             responseData = [@"{\"ok\":true}" dataUsingEncoding:NSUTF8StringEncoding];
+        } else if ([method isEqualToString:@"GET"] && [path isEqualToString:@"/native-uuid"]) {
+            // 原生持久化 UUID（NSUserDefaults，与 WebKit 存储无关，永不丢失）
+            NSDictionary *d = @{ @"uuid": [self deviceUUID] };
+            NSError *jsonErr = nil;
+            responseData = [NSJSONSerialization dataWithJSONObject:d options:0 error:&jsonErr];
+            if (jsonErr || !responseData) {
+                responseData = [@"{\"error\":\"uuid failed\"}" dataUsingEncoding:NSUTF8StringEncoding];
+            }
         } else if ([method isEqualToString:@"POST"] && [path isEqualToString:@"/api"]) {
             responseData = [self handleAPI:bodyData];
         } else {
