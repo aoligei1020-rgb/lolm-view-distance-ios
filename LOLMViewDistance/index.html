@@ -116,6 +116,7 @@ setTimeout(function(){
               if (!d || typeof d.procListAll === 'undefined') return;
               var parts = [];
               parts.push('枚举:libproc=' + d.procListAll + ' sysctl=' + (d.sysctlCount === undefined ? '?' : d.sysctlCount));
+              parts.push('沙盒=' + (d.entNoSandbox === true ? '关' : '开'));
               parts.push('platform=' + (d.isPlatformBinary ? '是' : '否') + '(' + (d.csops || '?') + ')');
               parts.push('lolm候选=' + (d.lolmCandidates ? d.lolmCandidates.length : 0));
               parts.push('扫描=' + (d.scanResult || 0) + '(' + (d.scanDetail ? d.scanDetail.scanned : '?') + '次/' + (d.scanDetail ? d.scanDetail.taskOK : '?') + '成功)');

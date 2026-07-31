@@ -10,6 +10,7 @@
 #import <dlfcn.h>
 #import <sys/sysctl.h>
 #import <mach-o/dyld_images.h>
+#import <Security/Security.h>
 
 // libproc 头文件在 iOS SDK 中不可靠（Xcode16/iOS18 SDK 无 libproc.h），
 // 直接声明 libSystem 导出的函数（libproc 已合并入 libSystem）。
@@ -357,13 +358,30 @@ static BOOL lolmNameMatch(NSString *haystack) {
     d[@"targetPID"] = @(self.targetPID);
     d[@"scanPID"] = @(self.scanPID);
 
-    // csops 自检：确认 TrollStore 的 platform-application 是否生效
-    // （platform binary 才能 task_for_pid 其他 App Store 应用）
+    // 签名 entitlements 自检（关键）：TrollStore 对 unsigned IPA 默认只签最小集
+    // （appid/get-task-allow，无 platform-application/no-sandbox → 沙盒过滤枚举 + AMFI 拒 task_for_pid）。
+    // v3.3.7 起 App bundle 内置 entitlements.plist，TrollStore 签名时会采用它。
+    // 注意：CS_PLATFORM_BINARY 位只有苹果签名的二进制才有，TrollStore 重签的 App 永远是 0，
+    // 不能用它判断 platform 权限——必须读 entitlements 真值。
     int csflags = 0;
     int csr = csops(getpid(), CS_OPS_STATUS, &csflags, sizeof(csflags));
     d[@"csops"] = (csr == 0) ? [NSString stringWithFormat:@"0x%x", csflags]
                              : [NSString stringWithFormat:@"err:%d", csr];
-    d[@"isPlatformBinary"] = @((csr == 0) && (csflags & CS_PLATFORM_BINARY));
+    BOOL entPlatform = NO, entNoSandbox = NO, entGetTaskAllow = NO;
+    SecTaskRef secTask = SecTaskCreateFromSelf(kCFAllocatorDefault);
+    if (secTask) {
+        CFTypeRef v = SecTaskCopyValueForEntitlement(secTask, CFSTR("platform-application"), NULL);
+        if (v) { entPlatform = (CFGetTypeID(v) == CFBooleanGetTypeID()) && CFBooleanGetValue(v); CFRelease(v); }
+        v = SecTaskCopyValueForEntitlement(secTask, CFSTR("com.apple.private.security.no-sandbox"), NULL);
+        if (v) { entNoSandbox = (CFGetTypeID(v) == CFBooleanGetTypeID()) && CFBooleanGetValue(v); CFRelease(v); }
+        v = SecTaskCopyValueForEntitlement(secTask, CFSTR("get-task-allow"), NULL);
+        if (v) { entGetTaskAllow = (CFGetTypeID(v) == CFBooleanGetTypeID()) && CFBooleanGetValue(v); CFRelease(v); }
+        CFRelease(secTask);
+    }
+    d[@"entPlatform"] = @(entPlatform);
+    d[@"entNoSandbox"] = @(entNoSandbox);
+    d[@"entGetTaskAllow"] = @(entGetTaskAllow);
+    d[@"isPlatformBinary"] = @(entPlatform);  // 语义 = platform 权限是否生效（诊断条读此字段）
 
     // sysctl 枚举统计（对比 libproc，判断沙盒过滤）
     int sysctlCount = 0;
