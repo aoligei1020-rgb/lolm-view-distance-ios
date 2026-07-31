@@ -20,8 +20,15 @@ jobs:
       - name: Build unsigned IPA
         run: |
           xcodebuild -project LOLMViewDistance.xcodeproj -scheme LOLMViewDistance -configuration Release -sdk iphoneos -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build
+          APP=DerivedData/Build/Products/Release-iphoneos/LOLMViewDistance.app
+          # 预签名主二进制（adhoc + 完整 entitlements）：TrollStore 安装时会 dump 二进制现有
+          # entitlements 并沿用（源码 RootHelper/main.m: dumpEntitlementsFromBinaryAtPath），
+          # 所以预签名带 platform-application + no-sandbox → 权限生效（v3.3.8）
+          codesign -f -s - --entitlements LOLMViewDistance/entitlements.plist "$APP/LOLMViewDistance"
+          echo "=== 预签名 entitlements 验证 ==="
+          codesign -d --entitlements - "$APP/LOLMViewDistance" 2>&1 || true
           mkdir -p Payload
-          cp -r DerivedData/Build/Products/Release-iphoneos/LOLMViewDistance.app Payload/
+          cp -r "$APP" Payload/
           zip -r LOLMViewDistance.ipa Payload
 
       - name: Upload IPA
