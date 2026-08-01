@@ -11,8 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Install xcodegen & ldid
+        run: |
+          brew install xcodegen
+          brew install ldid
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -21,10 +23,12 @@ jobs:
         run: |
           xcodebuild -project LOLMViewDistance.xcodeproj -scheme LOLMViewDistance -configuration Release -sdk iphoneos -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build
           APP=DerivedData/Build/Products/Release-iphoneos/LOLMViewDistance.app
-          # v3.3.11: 纯 unsigned，不做任何预签名。签名交给用户设备上的轻松签（Esign）
-          # 用 fake App Store 证书完成 → TrollStore 检测伪证书链（codeCertChainContainsFakeAppStoreExtensions）
-          # 走快通道原样安装 → 二进制内完整 entitlements（platform-application/task_for_pid-allow/
-          # proc_info-allow/run-unsigned-code/no-container，照 LOLM-22）全部保留 → 权限生效不闪退
+          # v3.4.1: ldid adhoc 签名 + 完整 entitlements（H5GG 7.9 同款状态，实测 attach 成功）
+          # 实测证据：H5GG 7.9 无 CMS 签名（count=5 无 SIGNATURESLOT）但二进制内嵌 entitlements
+          # （platform-application/task_for_pid-allow/proc_info-allow/run-unsigned-code/no-container）
+          # → TrollStore 安装时 dump 二进制现有 entitlements 沿用（RootHelper dumpEntitlementsFromBinaryAtPath）
+          # → task_for_pid 放行。v3.4.0 纯 unsigned 二进制零 entitlements → attach 失败。
+          ldid -SLOLMViewDistance/entitlements.plist "$APP/LOLMViewDistance"
           mkdir -p Payload
           cp -r "$APP" Payload/
           zip -r LOLMViewDistance.ipa Payload
@@ -32,5 +36,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: LOLMViewDistance-unsigned
+          name: LOLMViewDistance-v341
           path: LOLMViewDistance.ipa
