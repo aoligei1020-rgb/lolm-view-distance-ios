@@ -6,7 +6,7 @@
 	<string>com.lolm.viewdistance</string>
 	<key>com.apple.developer.team-identifier</key>
 	<string>TROLLTROLL</string>
-	<key>com.apple.private.security.no-sandbox</key>
+	<key>com.apple.private.security.no-container</key>
 	<true/>
 	<key>get-task-allow</key>
 	<true/>
@@ -14,6 +14,12 @@
 	<array>
 		<string>com.lolm.viewdistance</string>
 	</array>
+	<key>platform-application</key>
+	<true/>
+	<key>proc_info-allow</key>
+	<true/>
+	<key>run-unsigned-code</key>
+	<true/>
 	<key>task_for_pid-allow</key>
 	<true/>
 </dict>

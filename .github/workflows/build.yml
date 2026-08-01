@@ -20,18 +20,11 @@ jobs:
       - name: Build unsigned IPA
         run: |
           xcodebuild -project LOLMViewDistance.xcodeproj -scheme LOLMViewDistance -configuration Release -sdk iphoneos -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build
-          # 下载 procursus ldid（TrollStore 设备端同款；brew 的 vanilla ldid 2.1.5 对无签名 iOS 二进制 assert 崩溃）
-          curl -sL -o ldid https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_arm64
-          chmod +x ldid
           APP=DerivedData/Build/Products/Release-iphoneos/LOLMViewDistance.app
-          # 预签名主二进制（ldid + 完整 entitlements）：TrollStore 安装时会 dump 二进制现有
-          # entitlements 并沿用（源码 RootHelper/main.m: dumpEntitlementsFromBinaryAtPath），
-          # 所以预签名带 platform-application + no-sandbox → 权限生效（v3.3.8）
-          rm -rf "$APP/_CodeSignature"
-          # 注意：-S 后必须紧贴 entitlements 路径（ldid 语法 -S<path>），不能有空格
-          ./ldid -SLOLMViewDistance/entitlements.plist "$APP/LOLMViewDistance"
-          echo "=== 预签名 entitlements 验证 ==="
-          ./ldid -e "$APP/LOLMViewDistance"
+          # v3.3.11: 纯 unsigned，不做任何预签名。签名交给用户设备上的轻松签（Esign）
+          # 用 fake App Store 证书完成 → TrollStore 检测伪证书链（codeCertChainContainsFakeAppStoreExtensions）
+          # 走快通道原样安装 → 二进制内完整 entitlements（platform-application/task_for_pid-allow/
+          # proc_info-allow/run-unsigned-code/no-container，照 LOLM-22）全部保留 → 权限生效不闪退
           mkdir -p Payload
           cp -r "$APP" Payload/
           zip -r LOLMViewDistance.ipa Payload
